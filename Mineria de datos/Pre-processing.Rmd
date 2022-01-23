@@ -1,0 +1,432 @@
+---
+title: "David Botin"
+author: "Análisis Multivariante Lesión Rodilla Baqueira"
+date: "26/01/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+===========================================================================================================================
+===========================================================================================================================
+
+# Cargamos las librerías necesarias
+
+```{r,warning=FALSE,message=FALSE}
+# Cargamos todos los paquetes necesarios
+list.of.packages <- c("tidyr","ggplot2","readxl","tidyverse","lubridate","ggmap","base","RColorBrewer","kableExtra")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages) > 0) {
+ install.packages(new.packages)
+}
+
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages)
+```
+
+# Lectura de Base de datos
+
+```{r}
+excel_sheets("Accidentes.xlsx") #Miro cuantas hojas hay en el fichero
+Accidentes <- read_excel("Accidentes.xlsx")
+
+excel_sheets("Episodios.xlsx")
+sheet<-excel_sheets("Episodios.xlsx")
+
+excel_sheets("InformesAsistencia.xlsx")
+Informes <- read_excel("InformesAsistencia.xlsx")
+
+excel_sheets("Diagnosticos.xlsx")
+Diagnosticos <- read_excel("Diagnosticos.xlsx")
+
+excel_sheets("Tratamientos.xlsx")
+Tratamientos<- read_excel("Tratamientos.xlsx")
+
+```
+===========================================================================================================================
+===========================================================================================================================
+
+# *Pre-processing de los datos*
+
+La base de datos Episodios esta dividiva en 4 hojas, una por cada año. La unimos para tener unificados todos los años.
+```{r}
+Episodios20 <- read_excel("Episodios.xlsx", sheet = sheet[1])
+Episodios19 <- read_excel("Episodios.xlsx", sheet = sheet[2])
+Episodios18 <- read_excel("Episodios.xlsx", sheet = sheet[3])
+Episodios17 <- read_excel("Episodios.xlsx", sheet = sheet[4])
+Episodios<-rbind(Episodios20,Episodios19,Episodios18,Episodios17)
+```
+
+La base de datos de Diagnosticos, tiene dos hojas, en una estan todos los diagnósticos que se detectaron en los año de estudio. Por otra parte, en la Hoja1, a estos diagnósticos se les asigna un grupo, de forma que se crean 33 grupos de diagnóticos distintos que son los que utilizaremos en nuestro análisis. Para ello hay que hacer una unión de las dos tablas, de forma que asignemos a cada lesión a que grupo pertenece.
+
+```{r}
+Diagn<- read_excel("Diagnosticos.xlsx",sheet = "Hoja1")
+Diagn2<- read_excel("Diagnosticos.xlsx")
+nrow(Diagn)
+nrow(Diagn2)
+
+colnames(Diagn)[1]<-"Diagnostico"
+colnames(Diagn2)[4]<-"Diagnostico"
+
+Diagn2$Group<-NA
+Diagn2$Group[grep("CARA",Diagn2$Diagnostico)]<-"CABEZA/CARA"
+Diagn2$Group[grep("CONTUSIÓN",Diagn2$Diagnostico)]<-"CONTUSIONES"
+Diagn2$Group[grep("CONTUSION",Diagn2$Diagnostico)]<-"CONTUSIONES"
+Diagn2$Group[grep("CONTRACTURA",Diagn2$Diagnostico)]<-"CONTRACTURAS"
+Diagn2$Group[grep("RODILLA",Diagn2$Diagnostico)]<-"RODILLA GENERAL"
+
+for(i in 1:nrow(Diagn)){
+ positions<- grep(Diagn$Diagnostico[i],Diagn2$Diagnostico, fixed=TRUE)
+ Diagn2$Group[positions]<-Diagn$Grupo[i]
+}
+
+Diagnosticos<-Diagn2
+rm(Diagn,Diagn2)
+unique(Diagnosticos$Group)
+```
+
+
+# Consolidación de Base de datos
+
+Se muestran todas las bases de datos
+```{r}
+head(Accidentes)
+head(Episodios)   
+head(Informes)    
+head(Diagnosticos)    
+head(Tratamientos)   
+
+str(Accidentes)
+str(Episodios)   
+str(Informes)    
+str(Diagnosticos)    
+str(Tratamientos)
+```
+
+# Descripción de las variables categóricas
+```{r}
+# Accidentes
+length(table(Accidentes$Sexo))
+length(table(Accidentes$Provincia))
+
+# Episodios
+length(table(Episodios$Episodio))
+length(table(Episodios$`Tipo Episodio`))
+
+# Informes
+length(table(Informes$`Informe de Asistencia`))
+
+# Diagnósticos
+length(table(Diagnosticos$Diagnostico))
+length(table(Diagnosticos$Group))
+
+# Tratamientos
+length(table(Tratamientos$Tratamiento))
+```
+La variable Episodios, que se refiere al tipo de lesión, es muy similar al diagnóstico, por lo que se decide utilizar solamente el diagnóstico. Respecto a las variables de InformesAsistencia y Tratamientos, existen tantas categorías de las variables que no nos son útiles para nuestro análisis. De forma que solamente se decide utilizar las bases de datos de Accidentes y Diagnósticos
+
+
+Modifico la "Row Data" para consolidar la base de datos final del análisis. Para ello hago la unión de la tabla Accidentes con la de Diagnósticos, de manera que para cada accidente es posible que hayan distintas lesiones y por lo tanto distintos diagnósticos.
+
+```{r}
+Data<-inner_join(Accidentes, Diagnosticos, by="IdHistorico")
+```
+
+Eliminamos las variables redundantes. Para nuestro análisis, solamente nos quedaremos con las variables: Fecha, Sexo, Edad y Diagnóstico.
+
+```{r}
+Data<-Data[,c(3,4,5,10)]
+names(Data)[4]<-"Diagnosticos"
+```
+
+# Descripción formal de la estructura de los datos
+
+```{r}
+head(Data)  #kable(Data) %>% kable_styling()
+dim(Data)
+summary(Data)
+```
+
+La base de datos final a analizar consta de 11.276 observaciones y 4 variables.
+
+```{r}
+ListaVar<-sapply(Data,class)
+ListaVar
+Variables_Cat <- which(ListaVar == "character")
+Variables_Num <- which(ListaVar == "numeric")
+Variables_Cat<-colnames(Data)[Variables_Cat]
+Variables_Num<-colnames(Data)[Variables_Num]
+```
+
+Variables numericas:
+● Edad: Edad de la persona involucrada en el accidente.
+
+Nos referimos con episodio a las lesiones que ha tenido una persona, es decir, una persona que tiene un accidente puede tener varios episodios.
+
+Variables categoricas:
+● Sexo: Edad de la persona involucrada en el accidente.
+● Diagnosticos: Tipo de episodio.
+
+
+Variable "POSIXct"
+● Fecha Visita: Fecha en el que se dio el accidente.
+
+
+# Análisis descriptivo univariante
+
+Analizamos las variables de nuestro dataset. Comenzaremos analizando las variables numérica seguidas de las variables categóricas. Es necesario este análisis previo antes de hacer el preprocessing.
+```{r}
+str(Data)
+```
+
+
+# Variables numéricas
+
+```{r}
+#Gráficamente
+ ggplot(Data, aes(x=Edad)) + geom_histogram(bins=10,col='black', fill="steelblue") + ggtitle(paste("Histograma de","Edad")) + xlab("Edad") + theme_classic()
+ ggplot(Data, aes(x=Edad)) + geom_boxplot(col='black', fill="steelblue") + ggtitle(paste("Boxplot de","Edad")) + xlab("Edad") + theme_classic()
+
+ #Analiticamente
+sapply(Data[,Variables_Num],summary)  #kable(sapply(Data[,Variables_Num],summary)) %>% kable_style()
+```
+
+Identificamos outliers que influyen significativamente en la variable y que debemos tratar. Es por eso que tanto el histograma como el boxplot no son interpretables.
+
+# Variables categóricas
+
+```{r}
+#Analiticamente
+sapply(Data[,Variables_Cat],table)  #Categorias de cada variable
+sapply(Data[,Variables_Cat],function(x){ nrow(table(x))}) # Número de categorias de cada variable
+
+#Covertimos todas las variables charachter a factor
+Data[,Variables_Cat]<-lapply(Data[,Variables_Cat],as.factor)
+
+#Gráficamente
+loopCat <- function(names) {
+  n.use<-sym(names)
+  nb.cols<-length(levels(Data[[n.use]]))
+  mycolors <- colorRampPalette(brewer.pal(8, "Set2"))(nb.cols)
+  plotbar <- ggplot(Data) + geom_bar(aes(x=!! n.use, fill=!! n.use),show.legend=FALSE) +
+          scale_fill_manual(values =mycolors) + theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  return(plotbar)
+}
+
+loopCat1 <- function(names) {
+  #Parametros pre gráfica
+  n.use<-sym(names)
+  nb.cols<-length(levels(Data[[n.use]]))
+  mycolors <- colorRampPalette(brewer.pal(8, "Set2"))(nb.cols)
+  per <- Data %>% count(!! n.use) %>% mutate(pct = n / sum(n))
+  #Gráfica
+  pieplot<-ggplot(per, aes(x = "", y = pct, fill = !! n.use )) +
+  geom_bar(stat = "identity", color = "white") +
+  geom_text(aes(x = 1.6, label = scales::percent(pct, accuracy = .1)), position = position_stack(vjust = .5)) + scale_fill_manual(values =mycolors) + coord_polar(theta="y") + theme_void()
+ 
+  return(pieplot)
+}
+
+lapply(Variables_Cat,loopCat)
+lapply(Variables_Cat,loopCat1)
+```
+
+Las variables categóricas parecen estar muy limpias. Sin embargo, la variable Diagnostico tiene categorías con poca frecuencia, que deberan ser analizadas.
+
+# Pre-processing
+
+El primer paso es detectar variables que no nos proporcionan información en nuestro análisis. Despues de un primer fitro en la lectura de datos todas las variables del dataset actual son muy relevantes, por lo que mantenemos todas
+
+# Tratamiento de NA's
+
+Verificamos la posible existencia de valores faltantes en nuestras variables, estos valores no se han podido detectar graficamente así que aplicamos funciones para comprobarlo.
+```{r}
+sum(is.na(Data))
+sapply(Data, function(x) sum(is.na(x)))   #kable(sapply(Data, function(x) sum(is.na(x)))) %>% kable_styling()
+```
+
+No hay existencia de valores faltantes en nuestro dataset. Podemos proceder con los siguientes pasos.
+
+
+# Tratamiento de Outliers
+
+Hemos visto en los histogramas de edad que había un valor extremo. Comprobamos Outliers en la variable Edad.
+
+```{r}
+Outliers<-boxplot(Data$Edad)$out             #Detectamos los outliers
+Outliers
+```
+Hay tres valores extremos que toman la edad de 99, 135 y 1951. Estos outliers se interpretan como errores aleatorios en la toma de la muestra, y por lo tanto se pueden eliminar.
+
+Eliminamos los outliers
+
+```{r}
+Remove<-which(Data$Edad>=min(Outliers))
+Data<-Data[-Remove,]
+```
+
+# Tratamiento de errores
+
+Existen también valores erroneos en la variable Edad que no detecta el boxplot, hay Accidentes en los que la persona implicada ha registrado 0 años. Para el estudio hemos tenido en cuenta que edades menores de 3 años son errores en la toma de la muestra, se considera que con esa edad no se puede practicar este deporte.
+
+```{r}
+table(Data$Edad)
+length(which(Data$Edad<3))
+```
+Por lo tanto, eliminamos también estas observaciones.
+
+```{r}
+Remove<-which(Data$Edad<3)
+Data<-Data[-Remove,]
+```
+
+# Transformación de Variables
+
+Una vez detectados los vaores faltantes y outliers, consideramos la transformación de variables.
+
+# 'Edad'
+
+Se ha decidido que la variable Edad es más útil de forma categórica. Categorizamos la variable edad en 4 intervalos; "0-15", "16-29", "30-50", ">=51"
+
+```{r}
+breakPoints <- c(0, 15, 29, 50, Inf)
+categories <- c("0-15", "16-29", "30-50", ">=51")
+ 
+Data$Edad <- cut(Data$Edad, breaks = breakPoints, labels = categories)
+Variables_Cat<-c(Variables_Cat,"Edad")
+```
+  
+# "Diagnósticos"
+
+Por otra parte, la variable Diagnósticos, formada por 33 grupos:
+
+```{r}
+table(Data$Diagnosticos) #kable(table(Data$Diagnosticos)) %>% kable_styling()
+```
+
+Tiene grupos con muy pocas observaciones, asi que se decide agrupar todos aquellos menores a 100 en una única variable que llamaremos OTROS.
+
+```{r}
+which(table((Data$Diagnosticos))<100)
+names<-names(which(table((Data$Diagnosticos))<100))
+
+Data$Diagnosticos<-as.character(Data$Diagnosticos)
+for(i in names){
+  Data$Diagnosticos[grep(i,Data$Diagnosticos,fixed = TRUE)]<-"OTROS"
+}
+
+Data$Diagnosticos<-as.factor(Data$Diagnosticos)
+table(Data$Diagnosticos)
+```
+
+Ahora tenemos 21 grupos de diagnósticos distintos de los cuáles "OTROS" incluye a los que hemos considerado poco influyentes.
+
+# Derivación de nuevas variables
+
+Además de transformación de variables, se ha decidido también derivar una variable a raiz de otra. La variable "fecha" no es muy útil en este formato, por lo que se decide derivar la variable a una variable de Mes, al cuál solamente se le asignará el mes en el que se dió la lesión.
+
+#'Fecha'
+
+Generamos una nueva variable llamada Mes a raiz de la fecha.
+
+```{r}
+Date <- Data$`Fecha Visita`
+Date<-as.factor(month(as.POSIXlt(Date, format="%m/%d/%Y")))
+levels(Date)<-c("Enero","Febrero","Marzo","Abril","Noviembre","Diciembre")
+Data$Mes<-Date
+Variables_Cat<-c(Variables_Cat,"Mes")
+```
+
+
+# Elimino Variables Redundantes
+
+Por último, eliminamos las variables redundantes que han quedado del pre-processing.
+```{r}
+Data$`Fecha Visita`<-NULL
+head(Data)
+```
+
+Vemos que nuestra base esta completamente limpia.
+
+```{r}
+sapply(Data,function(x){sum(is.na(x))})
+```
+
+
+# Análisis descriptivo univariante Datos Procesados
+
+La base de datos procesada, después de hacer tratamiento de datos faltantes, detección de outliers, y codifiación de variables, tiene las iguientes estructura:
+11.240 observaciones, y 5 variables.
+
+Todas las variables son categóricasque se codifican como factor.
+```{r}
+Data<-data.frame(lapply(Data,as.factor))
+str(Data)
+```
+
+Se representan las variables categoricas con barplots y piecharts, para ver la frecuencia de cada nivel.
+
+```{r}
+loopCat <- function(names) {
+  n.use<-sym(names)
+  nb.cols<-length(levels(Data[[n.use]]))
+  mycolors <- colorRampPalette(brewer.pal(8, "Set2"))(nb.cols)
+  plotbar <- ggplot(Data) + geom_bar(aes(x=!! n.use, fill=!! n.use),show.legend=FALSE) +
+          scale_fill_manual(values =mycolors) +theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  return(plotbar)
+}
+
+loopCat1 <- function(names) {
+  #Parametros pre gráfica
+  n.use<-sym(names)
+  nb.cols<-length(levels(Data[[n.use]]))
+  mycolors <- colorRampPalette(brewer.pal(8, "Set2"))(nb.cols)
+  per <- Data %>% count(!! n.use) %>% mutate(pct = n / sum(n))
+  #Gráfica
+  pieplot<-ggplot(per, aes(x = "", y = pct, fill = !! n.use )) +
+  geom_bar(stat = "identity", color = "white") +
+  geom_text(aes(x = 1.6, label = scales::percent(pct, accuracy = .1)), position = position_stack(vjust = .5)) + scale_fill_manual(values =mycolors) + coord_polar(theta="y") + theme_void()
+ 
+  return(pieplot)
+}
+
+
+lapply(names(Data),loopCat)
+lapply(names(Data),loopCat)[[3]] # Para poder ver bien la gráfica de la variable Diagnosticos
+lapply(names(Data),loopCat1)
+```
+
+# Análisis descriptivo bivariante
+
+Respecto a los diagnosticos
+```{r}
+loopbivarCat <- function(names) {
+  n.use<-sym(names)
+  plotbar<-ggplot(Data, aes(x =Diagnosticos, fill = !! n.use)) + geom_bar(position = "fill") + ggtitle(paste0("Diagnostico en función de: ",names)) + theme_classic() + xlab("Diagnósticos") + ylab("Densidad") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  return(plotbar)
+}
+
+names<-c("Sexo","Edad","Mes")
+lapply(names,loopbivarCat)
+```
+
+Sexo vs Edad
+```{r}
+ggplot(Data, aes(x = Edad, fill = Sexo)) + geom_bar(position = "fill") + ggtitle(paste0("Contratación del producto por:",names)) + theme_classic() + xlab(names) + ylab("Densidad") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+# Guardar toda la información en nuestro directorio
+```{r}
+#path<-"C:/Users/X541UJ/Desktop/TFG/Analisis_propio/Análisis/Multivariante/ACM"
+#path2<-"C:/Users/X541UJ/Desktop/TFG/Analisis_propio/Análisis/Multivariante/Reglas de Asociación"
+#save(Data,file =paste0(path,"/DataProcesada.RData"))
+#save(Data,file =paste0(path2,"/DataProcesada.RData"))
+#Lo guardamos en la carpeta de clustering para seguir
+#save.image("Resultados.RData")
+```
+
+
+

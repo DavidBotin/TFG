@@ -1,0 +1,551 @@
+---
+title: "Análisis de Series Temporales sobre las Lesiones de las pistas de Baqueira-Beret"
+author: "David Botin"
+date: "26/01/2022"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+===========================================================================================================================
+===========================================================================================================================
+# Cargamos las librerías necesarias
+
+```{r, include=FALSE, warning=FALSE,include=FALSE}
+list.of.packages <- c("tidyr","knitr","ggplot2","ggpubr","readxl","forecast","lmtest","tseries","reshape2","ggpubr","car","stringr","trend","fTrading") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages) > 0) {
+  install.packages(new.packages)
+}
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages)
+```
+
+
+# Lectura de la base de datos
+
+```{r}
+load("Data.RData")
+```
+
+===========================================================================================================================
+===========================================================================================================================
+
+# *Análisis de Series Temporales*
+
+Antes de comenzar, tenemos que definir la serie que vamos a analizar. El objetivo es predecir el número de lesiones para los proximos años, pero las lesiones se ven directamente correlacionadas por el número de esquiadores anuales. Es por este motivo que se ha decidido hacer el análisis sobre el ratio entre accidentes y Nº de esquiadores.
+
+```{r}
+Ratio<-Data$`AllSport Injuries`/Data$`Skiers`
+```
+
+Es necesario realizar una transformación de la variable. Se decide hacer una transformación logaritmica: log(x/(1-x))
+
+```{r}
+Transformed_Data<-log(Ratio/(1-Ratio))
+```
+
+Transformamos los datos a formato de series temporales para poder analizarla en R. Representamos la el ratio original vs el ratio transformado.
+```{r,warning=FALSE, message=FALSE}
+Serie<-ts(Transformed_Data,start=c(1992),frequency=1)
+Orig_Serie<-ts(Ratio,start=c(1992),frequency=1)
+
+ggplot(Orig_Serie,aes(time(Orig_Serie),Orig_Serie)) + geom_line(color="steelblue") + geom_point() + xlab("Años") + ylab("Ratio") + ggtitle("Serie Temporal") + theme_classic()
+
+ggplot(Serie,aes(time(Serie),Serie)) + geom_line(color="steelblue") + geom_point() + xlab("Años") + ylab("Ratio transformado") + ggtitle("Serie Temporal Transformada") + theme_classic()
+
+ggplot(Serie,aes(time(Serie),Serie)) + geom_line(color="steelblue") + geom_point() + xlab("Años") + ylab("Ratio transformado") + ggtitle("Serie Temporal Transformada") + theme_classic() + geom_smooth(method = "lm", color="red", se = FALSE)
+
+```
+
+Como es lógico, las dos curvas tienen la misma distribución, lo único que cambian son los valores.
+
+A priera vista la serie no presenta ninguna fluctuación respecto a la media o varianza de los datos. Tampoco se ven signos de estacionalidad, lo que es normal al tratarse de datos anuales.
+
+
+# Comprobación estacionariedad débil
+
+Sabemos que una serie es estacionaria en sentido débil si mantiene constantes todas sus características lo largo del tiempo. Es decir, si:
+-	Todas las variables aleatorias del proceso tienen la misma media.
+-	La dispersión en torno a la media constante a lo largo del tiempo es la misma para todas las variables del proceso.
+-	Las autocovarianzas solo dependen del número de periodos de separación entre las variables y no del tiempo, es decir, la covarianza lineal entre dos variables aleatorias del proceso que disten k periodos de tiempo es la misma que existe entre cualesquiera otras dos variables que estén separadas también k periodos, independientemente del momento concreto de tiempo al que estén referidas.
+
+La función de autocorrelación, nos pueden ayudar gráficamente a analizar la estacionariedad.
+
+```{r}
+acf(Serie,main="Función de Autocorrelación")
+```
+
+Los valores de la ACF decaen exponencialmente a 0 , esto quiere decir que no existe tendencia en la serie, es decir, no hay fluctuación respecto a la media o lo que es lo mismo, para todo t la serie temporal indica ser estacionaria en media o débilmente estacionaria de primer orden. Además, los todos los retardos son significativamente 0 (con excepción del retardo 1 que se situa en el límite),por lo tanto la covarianza entre variables es 0 para todos los retardos, que significa que la serie es estacionária en autocovarianza o débilmente estacionaria de segundo orden. En un primer análisis grafico se han obtenido conclusiones que deben ser corroboradas analiticamente.
+
+Además de la estacionariedad existen varias características sobre la serie temporal que deben de ser analizadas, ya que influyen directamente en la elección del modelo. Antes de la elección del modelo se debe realizar los siguientes tests;
+Test de estacionariedad, test de normalidad y test de independencia estadística.
+
+# Test de estacionariedad
+
+## Estacionariedad débil de primer orden
+```{r}
+# Test   Mann-Kendall / Test de Tendencia
+mk.test(Serie)
+```
+Aceptamos la hipótesis nula. La serie no presenta tendencia, y por lo tanto, la media es constante para todo t. Se corrobora la estacionariedad  de primer orden.
+
+
+## Estacionariedad débil de segundo orden
+
+Para la estacionariedad débil de segundo orden se deben comprobar que la varianza es constante y que las covarianzas son independientes. Las covarianzas ya se han comprobado con la gráfica ACF. Ahora comprobamos la heterocedasticidad de la varianza.
+
+```{r}
+#Test de Variabilidad
+gqtest(lm(Serie~time(Serie)))
+
+```
+
+Aceptamos la Hipótesis nula con un p-valor > 0,05 . Podemos afirmar con una fiabilidad del 95% que la serie es homocedástica, es decir, la varianza es igual en toda la serie. Con estos resultados es suficiente para poder afirmar que la serie es estacionaria. Sin embargo, nos aseguramos aplicando el test de Dickey-Fuller Aumentado (ADF). En este test se analizan las raíces unitarias, si una serie o proceso tiene raíz unitaria, la serie es no estacionaria, mientras que si no tiene se asume estacionariedad débil.
+
+```{r}
+#Test de Dickey Fuller
+adf.test(Serie, alternative="stationary",k=0)
+PP.test(Serie)
+```
+
+Como podemos ver el p-valor es inferior a 0.05, por lo tanto rechazamos la hipótesis nula. Esto significa que rechazamos la no estacionariedad y entonces podemos afirmar que nuestra serie, sin ningún tipo de transformación, es estacionaria de segundo orden o debilmente estacionaria.
+
+
+# Test de Estacionariedad estricta >> Test de Normalidad
+
+Una vez comprobada la estacionariedad débil, sabemos que si una serie es estacionaria de segundo orden y presenta una distribución normal, la serie se considera estrictamente estacionaria. Si comprobamos que nuestra serie es normal entonces la serie presentara estacionariedad en sentido estricto.
+
+```{r, warning=FALSE, message=FALSE}
+hist(Serie,col="steelblue")
+boxplot(Serie, col="steelblue")
+ggqqplot(Serie,color = "blue")
+jarque.bera.test(Transformed_Data)
+
+```
+Gráficamente podemos ver como tanto en el histograma como en el boxplot parace distribuirse de forma normal. Analiticamente, mediante el test de Jarque Bera se obtiene un p valor mayor a 0.05, lo que nos hace aceptar la hipótesis nula de Normalidad.
+
+# Independencia Estadística
+
+La independencia estadística es muy importante comprobarla, ya que si nuestra serie no es dependiente, entonces las predicciones que realicemos no serán validas, teniendo en cuenta que nuestra serie se comporta de forma completamente aleatoria.
+```{r}
+acf(Serie,main="Función de Autocorrelación")
+pacf(Serie,main="Función de Autocorrelación Parcial")
+
+Box.test(Serie,type="Ljung", fitdf = 0.5)
+Box.test(Serie^2,type="Ljung", fitdf = 0.5)
+```
+Con un p-valor menor a 0.05 rechazamos la hipotesis nula. Nuestra serie es dependiente
+
+# Elección del modelo
+
+Una vez hemos comprobado que nuestra serie es estacionaria, sigue una distribución normal y es dependiente, entonces podemos comenzar a modelizarla
+
+===========================================================================================================================
+===========================================================================================================================
+
+# *Modelización  Box-Jenkins / ARIMA*
+
+Hemos explicado que existen una clase de modelos paramétricos que permiten modelar las series estacionaria y no estacionarias llamados modelos ARIMA. Estos modelos incluyen los modelos AR(Autoregressive) y MA(Moving Average). En el ejemplo que se presenta, la serie es estacionaria sin necesidad de hacer ningun tipo de transformación, por lo que directamente podemos comenzar con la estimación de parámetros del modelo. 
+Una herramienta muy relevante en la identificación de un modelo es el correlograma, que muestra las dependencias lineales entre observaciones proximas. La interpretación de los correlogramas no solo nos indican si una serie es estacionaria o no, también nos sirven como guia de la estimación de parámetros.
+
+```{r}
+par(mfrow=c(1,2))
+acf(Serie,main="Función de Autocorrelación")
+pacf(Serie,main="Función de Autocorrelación Parcial")
+```
+
+Se observa que las funciones de autocorrelación (ACF) y autocorrelación parcial (ACFP) decaen exponencialmente a cero en los dos gráficos, ningun valor esta por encima del intervalo de significancia. Aparentemente, se dan signos de ser una serie totalmente aleatoria, o que da lugar a un modelo con predicciones irrelevantes. Sin embargo, para el retardo k=1, tanto en la gráfica de ACF como en la de PACF el valor esta muy cerca del  limite de significación.
+
+Comprobamos los modelos de forma manual, y los comparamos segñun la medida de ajuste AIC, que nos indicará cuál es el modelo que tiene menos error en nuestra serie
+
+```{r}
+Modelo1<-arima(Serie,order=c(0,0,0))
+Modelo2<-arima(Serie,order=c(0,0,1))
+Modelo3<-arima(Serie,order=c(1,0,0))
+Modelo4<-arima(Serie,order=c(1,0,1))
+Modelo1$aic
+Modelo2$aic
+Modelo3$aic
+Modelo4$aic
+```
+
+ARIMA(0,0,1)  es el que obtiene un menor valor de AIC, por lo que es el modelo que más se ajusta a la serie. Descartamos la aleatoriedad de los datos. El parámetro Integración de la Serie (I), es siempre 0 en este caso, ya que hemos afirmado desde el inicio que la serie no presenta estacionalidad.
+
+Escojemos el de menor AIC, que garantiza un modelo mas ajustado : ARIMA(0,0,1)
+```{r}
+Modelo<-arima(Serie,order=c(0,0,1))
+```
+
+Si utilizamos la función de R auto.arima, vemos que efectivamente el modelo más ajustado a la serie es un ARIMA(0,0,1)
+
+```{r}
+Modelo<-auto.arima(Serie)
+Modelo
+```
+
+# Predicción
+
+Una vez estimado el modelo con menor error, podemos comenzar con las predicciones que genera el modelo. En este caso, dado que solamente tenemos 28 observaciones, se predicen unicamente los proximos 2 años.
+
+```{r}
+#DEFINO THEME PARA TODOS LOS GRÁFICOS A PARTIR DE AHORA
+theme_set(theme_classic() + theme(legend.title = element_blank()))
+
+Prediction_ARIMA<-forecast(Modelo,h=2)
+
+plot(Prediction_ARIMA)
+autoplot(Prediction_ARIMA) +
+  autolayer(fitted(Prediction_ARIMA), series="Valor ajustado",size=1) +
+  ylab("Ratio Lesiones") + xlab("Años")+ ggtitle("Prónostico ARMA")
+```
+
+Hacemos una transformación inversa de la predicción, para tener la predicción del ratio original
+
+```{r}
+#Trasformacion a Ratio original
+Prediction_ARIMA[["mean"]]<-exp(Prediction_ARIMA[["mean"]])/(1+exp(Prediction_ARIMA[["mean"]]))
+Prediction_ARIMA[["lower"]]<-exp(Prediction_ARIMA[["lower"]])/(1+exp(Prediction_ARIMA[["lower"]]))
+Prediction_ARIMA[["upper"]]<-exp(Prediction_ARIMA[["upper"]])/(1+exp(Prediction_ARIMA[["upper"]]))
+Prediction_ARIMA[["x"]]<-ts(Ratio,start=c(1992),frequency=1)
+
+fitted_values_ARIMA<-exp(fitted(Prediction_ARIMA)/(1+exp(fitted(Prediction_ARIMA))))
+
+autoplot(Prediction_ARIMA) +
+  autolayer(fitted_values_ARIMA, series="Valor ajustado",size=1) +
+  ylab("Ratio Lesiones") + xlab("Años")+ ggtitle("Prónostico ARMA")
+
+```
+
+En la gráfica se puede apreciar la  distribución de la serie respecto al modelo ajustado(linea roja). Las predicciones creadas por el modelo formulado ARMA(0,1) para los proximos dos años es un aumento en el ratio de accidentes.
+
+```{r}
+Prediccion2020_ARIMA <- Prediction_ARIMA$mean[1] #Predicción del ratio de lesiones para 2020
+Prediccion2021_ARIMA <- Prediction_ARIMA$mean[2] #Predicción del ratio de lesiones para 2021
+
+#Intervalo de confianza de la Predicción del ratio de lesiones
+Intervalo_inf<-Prediction_ARIMA$lower[,2] 
+Intervalo_sup<-Prediction_ARIMA$upper[,2]
+cbind(Intervalo_inf,Intervalo_sup)
+
+Ultimo_valor_obs<-Prediction_ARIMA$x[length(Prediction_ARIMA$x)]  #Ratio de lesiones en el último año observado
+
+Variacion2020_ARIMA<-(Prediccion2020_ARIMA - Ultimo_valor_obs) / Ultimo_valor_obs
+Variacion2021_ARIMA<-(Prediccion2021_ARIMA - Ultimo_valor_obs) / Ultimo_valor_obs
+
+paste0(round(Variacion2020_ARIMA*100,2)," %")
+paste0(round(Variacion2021_ARIMA*100,2)," %")
+```
+Concretamente hay un aumento de un 3% del ratio de lesiones para 2020 y un 4% para 2021 respecto al último año observado(2019).
+
+# Validación Modelo
+
+Si una serie está bien identificada, cuando se ajusta un modelo los residuos no deben tener estructura, es decir, deben parecerse a un Ruido Blanco. Un Ruido Blanco es una serie estacionaria que se ditribuye de forma normal con media 0  y varianza constante, y que ninguna observación depende de las otras. Es decir, se tienen que cumplis los supuestos de estacionariedad, normalidad e independencia.
+
+
+# Test de los residuos del modelo
+
+```{r}
+#Comportamiento de los errores
+plot.ts(residuals(Modelo),main = 'Residuos Modelo')
+```
+Este primer gráfico, muestra claramente la estructura de un proceso Ruido Blanco. La primera impresión gráfica de los residuos es que cumplen con las condiciones de validez de un modelo, sin embargo, es necesario comprobarlo de forma analítica.
+
+```{r}
+#Normalidad
+qqnorm(residuals(Modelo))
+qqline(residuals(Modelo))
+hist(residuals(Modelo),col = "steelblue")
+jarque.bera.test(residuals(Modelo))
+```
+
+Aceptamos hipotesis de normalidad de los residuos, p-value > 0.05. Los gráficos nos muestran signos de normalidad, que se corroboran con el test Jarque-Bera.
+
+```{r}
+#Independencia
+acf(residuals(Modelo)^2, main="ACF residuals")
+
+Box.test(residuals(Modelo),type="Ljung")
+Box.test(residuals(Modelo)^2,type="Ljung")
+```
+
+Respecto a la relación de los residuos, con el test de Llunj-Box.Pierce se obtiene un p-valor muy superior a 0.05, es decir, aceptamos la hipotesis nula de independencia de los residuos. Las gráficas ACF y PACF también muestran signos de independencia, ya que todos los valores son significativamente iguales a 0.
+
+```{r}
+tsdiag(Modelo)
+```
+
+Por último, estas gráficas comfirman que los residuos estandarizados, siguen claramente un Ruido Blanco. Además, los p-valores de independencia calculados para cada retardo de la ACF, son superiores a 0.05, por lo que no existen ningun tipo de dependencia.
+
+
+===========================================================================================================================
+===========================================================================================================================
+
+# *Modelización: SUAVIZADO EXPONENCIAL SIMPLE*
+
+El método de suavizado exponencial es una aproximación determinista al tratamiento de series temporales. Los suavizados se emplean para predecir nuevos valores de la serie.
+Existen tres tipos de suavizados: 
+- Los que se aplican a series sin tendencia ni estacionalidad
+- Los que se aplican a series con tendencia pero sin estacionalidad
+- Los que se aplican a series con tendencia y con estacionalidad.
+
+Nuestra Serie es del primer grupo. Por lo que el método que utilizaremos será el Suavizado exponencial simple.
+Este modelo depende de un parámetro "alpha" que modula la importancia que tienen las observaciones pasadas sobre el presente. Su valor oscila entre 0 y 1. Si se toman valores cercanos a 0, se le da mucho peso a las observaciones pasadas, mientras que cuando es cercano a 1, el peso recae en la última observación vista.
+
+Como no sabemos el parámetro optimo para nuestro modelo, hacemos varios modelos con diferente alpha en cada uno:
+
+# Modelos ajustados a los datos con distintos parámetros
+
+Utilizamos la función HoltWinters(), esta función sirve para realizar los tres tipos de suavizados. En nuestro caso, es el modelo exponencial simple el que vamos a formular por lo que especificamos solamente el valor del parámetro alpha, y los demás, les damos el valor FALSE. 
+```{r}
+Model_suav1<-HoltWinters(Serie, alpha=0.05, gamma = FALSE, beta = FALSE)
+Model_suav2<-HoltWinters(Serie, alpha=0.2, gamma = FALSE, beta = FALSE)
+Model_suav3<-HoltWinters(Serie, alpha=0.5, gamma = FALSE, beta = FALSE)
+Model_suav4<-HoltWinters(Serie, alpha=0.7, gamma = FALSE, beta = FALSE)
+Model_suav5<-HoltWinters(Serie, alpha=0.99, gamma = FALSE, beta = FALSE)
+
+plot(Model_suav1, lwd=2, ylab="Ratio",xlab="Años",main="Valores observados frente a valores predichos / Alpha = 0.05")
+legend("topright",lty=c(1,1),col=c("black","red"),lwd = 2,cex = 0.8,legend=c("Valores Observados","Valores predichos"))
+
+plot(Model_suav2, lwd=2, ylab="Ratio",xlab="Años",main="Valores observados frente a valores predichos/ Alpha = 0.2")
+legend("topright",lty=c(1,1),col=c("black","red"),lwd = 2,cex = 0.8,legend=c("Valores Observados","Valores predichos"))
+
+plot(Model_suav3, lwd=2, ylab="Ratio",xlab="Años",main="Valores observados frente a valores predichos/ Alpha = 0.5")
+legend("topright",lty=c(1,1),col=c("black","red"),lwd = 2,cex = 0.8,legend=c("Valores Observados","Valores predichos"))
+
+plot(Model_suav4, lwd=2, ylab="Ratio",xlab="Años",main="Valores observados frente a valores predichos/ Alpha = 0.7")
+legend("topright",lty=c(1,1),col=c("black","red"),lwd = 2,cex = 0.8,legend=c("Valores Observados","Valores predichos"))
+
+plot(Model_suav5, lwd=2, ylab="Ratio",xlab="Años",main="Valores observados frente a valores predichos/ Alpha = 0.99")
+legend("topright",lty=c(1,1),col=c("black","red"),lwd = 2,cex = 0.8,legend=c("Valores Observados","Valores predichos"))
+
+```
+
+Las gráficas muestran lo que hemos explicado, a menor alpha, el valor ajustado es mas conservador y se ve más influenciado por las observaciones pasadas, mientras que a mayor alpha, se el modelo ve afectado por la última observación vista, por lo que se ajusta más a la serie.
+
+# Formulación Modelo
+
+La misma función HoltWinters() calcula, por defecto, el valor optimo del modelo, sin necesidad de especificarle alpha.
+```{r}
+Modelo_Suav<-HoltWinters(Serie, gamma = FALSE, beta = FALSE)
+Modelo_Suav$fitted[,1]
+
+round(Modelo_Suav$alpha,3)
+```
+El parámetro alpha por defecto es 0.266.
+Además, creamos nuestro proprio bucle para comprobar la optimidad del parámetro alpha. En este caso, hacemos uso de la función ses, que nos calcula el Error Cuadrático Medio(MSE), que es la medida de la bondad del ajuste que vamos a utilizar.
+
+```{r}
+# Comprobamos alpha optimo
+alpha<-seq(from=0.001,to=0.999,by=0.001)
+RMSE<-NULL
+for(i in 1:length(alpha)){
+ SS<- ses(Serie,h=2,alpha = alpha[i],initial = "simple")
+ RMSE[i]<- accuracy(SS)[2]
+}
+
+alpha.fit<-data.frame(alpha,RMSE)
+alpha.min<-alpha[which(RMSE==min(RMSE))]
+
+ggplot(alpha.fit ,aes(alpha, RMSE)) + geom_line() + geom_point(aes(alpha.min,min(RMSE)),size=2,color="red")
+
+alpha.min
+```
+
+Efectivamente, el modelo  con el que se obtiene un menor error es con el parámetro alpha = 0.266.
+
+# Predicción
+
+Una vez tenemos el modelo formulado con el parámetro optimo, realizamos las predicciones.
+Para la predicción hacemos uso de la función "ses", del paquete forecast. Esta función nos devuelve los valores ajustados del modelo y los pronósticos para los años que le especifiquemos. En nuestro caso, dado que solo se analizan 28 observaciones, solamente predeciremos los proximos dos años.
+
+Antes de predecir el modelo óptimo es interesante analizar las predicciones según los diferentes parámetros.
+
+```{r}
+Model_suav1<-ses(Serie,h=2,alpha = 0.05)
+Model_suav2<-ses(Serie,h=2,alpha = 0.2)
+Model_suav3<-ses(Serie,h=2,alpha = 0.5)
+Model_suav4<-ses(Serie,h=2,alpha = 0.7)
+Model_suav5<-ses(Serie,h=2,alpha = 0.99)
+
+
+autoplot(Model_suav1) +
+  autolayer(fitted(Model_suav1), series="Valor ajustado",size=1) +
+  ylab("Ratio Transformado Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+
+autoplot(Model_suav2) +
+  autolayer(fitted(Model_suav2), series="Valor ajustado",size=1) +
+  ylab("Ratio Transformado Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+
+autoplot(Model_suav3) +
+  autolayer(fitted(Model_suav3), series="Valor ajustado",size=1) +
+  ylab("Ratio Transformado Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+
+autoplot(Model_suav4) +
+  autolayer(fitted(Model_suav4), series="Valor ajustado",size=1) +
+  ylab("Ratio Transformado Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+
+autoplot(Model_suav5) +
+  autolayer(fitted(Model_suav5), series="Valor ajustado",size=1) +
+  ylab("Ratio Transformado Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+```
+
+Como vemos las predicciones con un alpha alto son parecidas a los últimos valores observados, que en este caso son más bajas, mientras que las predicciones con alpha bajo estan más centradas, dado que toma todos los valores pasados.
+
+Pronosticamos la serie con el modelo optimo.
+
+```{r}
+Prediction_Suav<-ses(Serie,h=2)
+# Gráficas
+plot(Prediction_Suav, main= "Prónostico Suavizado Exponencial Simple", ylab="Ratio Transformado Lesiones" , xlab="Años")
+
+autoplot(Prediction_Suav) +
+  autolayer(fitted(Prediction_Suav), series="Valor ajustado",size=1) +
+  ylab("Ratio Transformado Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+```
+
+Pero recordamos que la serie original esta transformada, de forma que estas predicciónes solamente tienen una interpretación gráfica. Es necesario hacer una retransformación de la serie, para obtener el ratio original, referente al ratio de lesiones por esquiadores anuales.
+
+```{r}
+# Trasformacion a Ratio original
+Prediction_Suav[["mean"]]<-exp(Prediction_Suav[["mean"]])/(1+exp(Prediction_Suav[["mean"]]))
+Prediction_Suav[["lower"]]<-exp(Prediction_Suav[["lower"]])/(1+exp(Prediction_Suav[["lower"]]))
+Prediction_Suav[["upper"]]<-exp(Prediction_Suav[["upper"]])/(1+exp(Prediction_Suav[["upper"]]))
+Prediction_Suav[["x"]]<-ts(Ratio,start=c(1992),frequency=1)
+
+fitted_values_Suav<-exp(fitted(Prediction_Suav))/(1+exp(fitted(Prediction_Suav)))
+fitted_values_Suav
+
+autoplot(Prediction_Suav) +
+  autolayer(fitted_values_Suav, series="Valor ajustado", size=1) +
+  ylab("Ratio Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple")
+```
+
+Ahora ya podemos interpretar las predicciones. Con el análisis de suavizado exponencial simple, los pronósticos para los proximos dos años, al contrario que el modelo ARIMA son de disminución del ratio. Como nuestro modelo no tiene ni tendencia ni estacionalidad las predicciones a futuro son deterministas. Esto significa que la predicción T+1 se aplica a cualquier instante de tiempo, es por eso que en el ejemplo, la predicción para T+1 y T+2 es la misma.
+
+A continuación, se calcula la variación anual de ratio de lesiones de 2019 a 2020, es decir, del último año observado frente a la predicción del primer año.
+
+```{r}
+Prediccion2020_Suav<-Prediction_Suav$mean[1]  #Predicción del ratio de lesiones para 2020
+Ultimo_valor_obs<-Prediction_Suav$x[length(Prediction_Suav$x)]  #Ratio de lesiones en el último año observado
+
+Variacion2020_Suav<-(Prediccion2020_Suav - Ultimo_valor_obs) / Ultimo_valor_obs
+Variacion2021_Suav<-Variacion2020_Suav
+paste0(round(Variacion2020_Suav*100,2)," %")
+
+# Intervalo de confianza de la Predicción del ratio de lesiones
+Intervalo_inf<-Prediction_Suav$lower[,2]
+Intervalo_sup<-Prediction_Suav$upper[,2]
+data.frame(IC_Inferior=Intervalo_inf[1],IC_superior=Intervalo_sup[1])
+
+Variacion2020_Suav<-(Prediccion2020_Suav - Ultimo_valor_obs) / Ultimo_valor_obs
+```
+
+De 2019 a 2020 se predice una dsminución del ratio de lesiones de un 2.83%. Para el 2021 se obtiene el mismo pronóstico que para 2020.
+
+# Validación  del Modelo
+
+Igual que en la validación del modelo ARIMA los residuos del modelo de suavizado formulado deben parecerse a un Ruido Blanco.  Es decir, se tienen que cumplir los supuestos de estacionariedad, normalidad e independencia.
+
+```{r}
+summary(Prediction_Suav)
+round(accuracy(Prediction_Suav),3)
+```
+
+
+# Test de los residuos del modelo
+
+```{r}
+# Comportamiento de los errores
+plot.ts(Prediction_Suav$residuals,main = 'Residuos Modelo Exponencial Simple')
+```
+
+Este primer gráfico, muestra claramente la estructura de un proceso Ruido Blanco. La primera impresión gráfica de los residuos es que cumplen con las condiciones de validez de un modelo, sin embargo, es necesario comprobarlo de forma analítica.
+
+```{r}
+# Normalidad
+qqnorm(Prediction_Suav$residuals)
+qqline(Prediction_Suav$residuals)
+hist(Prediction_Suav$residuals,col="steelblue", main="Histograma residuos")
+jarque.bera.test(Prediction_Suav$residuals)
+```
+
+Aceptamos hipotesis de normalidad de los residuos, p-value > 0.05. Los gráficos nos muestran signos de normalidad, que se corroboran con el test Jarque-Bera.
+
+```{r}
+# Independencia
+acf(Prediction_Suav$residuals^2, main="ACF residuos")
+pacf(Prediction_Suav$residuals^2, mean="PACF residuos")
+
+Box.test(Prediction_Suav$residuals,type="Ljung")
+Box.test(Prediction_Suav$residuals^2,type="Ljung")
+```
+
+Con el test de Llunj-Box se obtiene un p-valor muy superior a 0.05, es decir, aceptamos la hipotesis nula de independencia de los residuos. Las gráficas ACF y PACF también muestran signos de independencia, ya que todos los valores son significativamente iguales a 0.
+
+======================================================================================================================
+======================================================================================================================
+# *Comparación de modelos*
+
+Ya tenemos los dos modelos formulados. Uno se ha realizado con los métodos de Box-Jenkins, utilizando ARIMA, mientras que otro se ha utilizado con los suavizados exponenciales.
+```{r}
+Prediction_ARIMA$model
+Prediction_Suav$model
+```
+
+# Comparación Ajuste de modelos
+
+Se pretende comparar la evolución de la curva de ajuste de los modelos.  Representamos en la misma gráfica la comparativa de cada modelo.
+```{r, warning=FALSE, message=FALSE}
+dd<-data.frame(rbind(round(accuracy(Prediction_Suav),3),round(accuracy(Prediction_ARIMA),3)))
+rownames(dd)<-c("Suavizado","ARMA")
+
+dd$AIC<-c(Prediction_Suav$model$aic,Prediction_ARIMA$model$aic)
+dd$BIC<-c(Prediction_Suav$model$bic,Prediction_ARIMA$model$bic)
+dd$AICC<-c(Prediction_Suav$model$aicc,Prediction_ARIMA$model$aicc)
+dd #kable(dd)
+
+
+Serie_InTrans<-exp(Serie)/(1+exp(Serie))
+Comp<-data.frame(fitted_values_ARIMA,fitted_values_Suav,Serie_InTrans)
+Comp<-melt(Comp)
+Comp$Year<-rep(c(1992:2019),)
+
+ggplot(Comp,aes(x=Year,y=value,colour=variable)) + geom_line(size=0.7) + scale_color_manual(values=c("red", "blue","black")) + scale_size_manual(values=c(1,2,0.5))
+```
+
+La  evolución de los ajustes es distinta, pero las dos son algo conservadoras. El método de suavizado presenta una tendencia decreciente en los últimos años que se verá reflejada en la predicción. El método ARIMA en cambio se mantiene constante.
+
+# Comparación pronósticos
+
+Como hemos visto en los gráficos anteriores, el ajuste de los dos modelos se comportan de forma distinta, por lo tanto las predicciones también son distintas. En este apartado comparamos los pronósticos de los dos modelos formulados. Lo aanalizaremos en forma de crecimiento respecto al último año.
+```{r}
+#Variación
+Variacion2020_Suav<-Variacion2021_Suav
+Var_Suav<-c(paste0(round(Variacion2020_Suav*100,2)," %"), paste0(round(Variacion2021_Suav*100,2)," %"))
+Var_Ar<-c(paste0(round(Variacion2020_ARIMA*100,2 )," %"), paste0(round(Variacion2021_ARIMA*100,2)," %"))
+Var<-data.frame(Variación_ARIMA=Var_Ar,Variación_Suavizado=Var_Suav)
+rownames(Var)<-c("20/21","21/22")
+Var
+#kable(Var)
+```
+
+El pronóstico para 2020 según el modelo ARIMA es de crecer un 3%, mientras que para el de suavizado es un decrecimiento de 2,83%
+Respecto al 2021, con el modelo ARIMA sigue creciendo, por lo que el crecimiento de este año respecto al 2019 es de un 4%. Por otra parte, el mprónostico de suavizados, como hemos visto es constante en todo el escenario de predicción, por lo que sigue siendo de un 2,83%.
+
+# Comparación Gráfica
+
+Por último, representamos los dos modelos con sus prónosticos.
+
+```{r}
+autoplot(Prediction_ARIMA) +
+  autolayer(fitted_values_ARIMA, series="Valor ajustado",size=1) +
+  ylab("Ratio Lesiones") + xlab("Años")+ ggtitle("Prónostico ARMA") + theme(legend.title = element_blank())
+
+autoplot(Prediction_Suav) +
+  autolayer(fitted_values_Suav, series="Valor ajustado",size=1) +
+  ylab("Ratio Lesiones") + xlab("Años")+ ggtitle("Prónostico Suavizado Exponencial Simple") + theme(legend.title = element_blank())
+
+```
