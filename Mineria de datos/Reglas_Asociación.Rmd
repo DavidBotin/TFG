@@ -1,0 +1,249 @@
+---
+title: "Reglas_Asociación"
+author: "David Botin"
+date: "26/01/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+===========================================================================================================================
+===========================================================================================================================
+
+# Cargamos las librerías necesarias
+
+```{r,include=FALSE, message=FALSE, warning=FALSE}
+list.of.packages = c("arules","dplyr","arulesViz","ggplot2")
+#new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+#if(length(new.packages) > 0) {
+#  install.packages(new.packages)
+#}
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages)
+```
+
+# Lectura de Bases de datos
+
+```{r}
+### Lectura de la base de dades ###
+load("DataProcesada.RData")
+dtrans <- as(Data, "transactions") # Transformamos a transacciones
+```
+
+===========================================================================================================================
+===========================================================================================================================
+
+# *Análisis Reglas de Asociación*
+
+# Seleccion de las variables categoricas
+
+Es importante recordar que los objetos de tipo transactions solo trabajan con información booleana, es decir, con la presencia o no de cada uno de los items en la transacción. En este caso, se Todas las variables de nuestra base ya son categóricas
+
+
+# Exploración de los items
+
+Visualizamos la matriz leida como base de datos transaccional
+
+```{r}
+dtrans
+summary(dtrans)
+dim(dtrans)
+head(colnames(dtrans)) # Las columnas son cada nivel de las variables
+head(rownames(dtrans)) # Las filas son cada observación de los datos
+
+# Comprobamos que si sumamos todos los niveles nos da el número de columnas de las transacciones
+foo <- function(x){ length(levels(x)) }
+sum(sapply(Data, foo))
+
+size <- size(dtrans)
+size
+```
+
+Inspeccionamos los items que forman cada transacción.
+
+```{r}
+inspect(dtrans[1:10])
+df_transacciones <- as(dtrans, Class = "data.frame")
+df_transacciones[c(1:10),]
+```
+
+Representamos solamente las 10 primeras transacciones, que como vemos tienen un identificador único. La transacción 1, por ejemplo, esta compuesta de "Sexo=F", "Edad=16-29", "Tipo Episodio=CABEZA/CARA", "Mes=Noviembre".
+
+
+El siguiente análisis básico consiste en identificar cuáles son los items más frecuentes dentro del conjunto de todas las transacciones. Por “frecuencia” se hace referencia al soporte de cada item, que es la fracción de transacciones que contienen dicho item respecto al total de todas las transacciones. Esto es distinto a la frecuencia de un item respecto al total de items, de ahí que la suma de todos los soportes no sea 1.
+
+```{r}
+# Vemos la frecuencia de cada item
+frecuencia_items <- itemFrequency(x = dtrans, type = "absolute")
+frecuencia_items
+frecuencia_items_rel <- itemFrequency(x = dtrans, type = "relative")
+frecuencia_items_rel
+```
+Los dos niveles del sexo son los que tienen mayor frecuencia como es de esperar. En un caso de Market cada transacción puede tener más o menos items que las otras, sin embargo, en nuestro caso todas las lesiones estan definidas con todas sus características. Por eso es de esperar que los items con mayor frecuencia sean las de la variable Sexo, que es la variable que contiene menos categorías.
+
+Representación gráfica de las frecuencias.
+
+```{r}
+items_freq<-data.frame(as.numeric(frecuencia_items),names(frecuencia_items),paste0(round(as.numeric(frecuencia_items_rel),2),"%"))
+colnames(items_freq)<-c("Frecuencia","Item","Freq_rel")
+items_freq<-items_freq[order(items_freq$Frecuencia,decreasing = TRUE),]
+
+
+ggplot(items_freq,aes(Frecuencia,Item)) +
+  geom_bar(stat='identity',fill="steelblue") +
+  geom_text(aes(x = Frecuencia, label = Freq_rel),
+            size=2.1,
+            hjust=-0.1,
+            col="black") +
+  theme_classic() +  
+  theme(text=element_text(size=8),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+```
+
+=========================================================================================================
+# Aplicación de algoritmo Apriori
+
+# Identificación de Itemsets frecuentes
+
+Se procede a extraer aquellos itemsets, incluidos los formados por un único item, que hayan aparecido al menos 50 veces.
+
+# Umbral de soporte
+
+```{r}
+soporte <- 50/dim(dtrans)[1]
+soporte
+```
+
+# Aplicamos el algoritmo a priori con el parámetro Support
+
+```{r}
+itemset_freq <- apriori(dtrans, parameter = list(sup = soporte,  target = "frequent itemsets")) 
+inspect(sort(itemset_freq, decreasing = TRUE)[1:10])
+inspect(sort(itemset_freq[size(itemset_freq) > 1], decreasing = TRUE)[1:10])
+inspect(sort(itemset_freq[size(itemset_freq) > 2], decreasing = TRUE)[1:10])
+summary(itemset_freq)
+```
+
+Representamos los itemsets con más de un item.
+
+```{r}
+#Excluimos del análisis los itemsets formados únicamente por un solo item
+itemset_freq <- apriori(dtrans, parameter = list(sup = soporte,  target = "frequent itemsets", minlen=2)) 
+itemset_freq
+
+itemsets <- sort(itemset_freq, by = "support", decreasing = TRUE)[1:10]
+inspect(itemsets)
+
+as(itemsets, Class = "data.frame") %>%
+  ggplot(aes(x = reorder(items, support), y = support)) +
+  geom_col(fill = "steelblue", width = 0.5) +
+  coord_flip() +
+  labs(y = "soporte", x = "itemsets") +
+  theme_classic()
+```
+
+Representamos los itemsets con más de dos item.
+```{r}
+# Excluimos del análisis los itemsets formados por uno o dos items
+itemset_freq <- apriori(dtrans, parameter = list(sup = soporte,  target = "frequent itemsets", minlen=3)) 
+itemset_freq
+
+itemsets <- sort(itemset_freq, by = "support", decreasing = TRUE)[1:10]
+inspect(itemsets)
+
+as(itemsets, Class = "data.frame") %>%
+  ggplot(aes(x = reorder(items, support), y = support)) +
+  geom_col(fill = "steelblue", width = 0.5) +
+  coord_flip() +
+  labs(y = "soporte", x = "itemsets") +
+  theme_classic()
+```
+
+# Obtencion de Reglas de Asociación
+
+Para crear las reglas de asociación se sigue el mismo proceso que para obtener itemsets frecuentes pero, además de especificar un soporte mínimo, se tiene que establecer una confianza mínima para que una regla se incluya en los resultados. En nuestro caso, establecemos una confianza bastante baja, ya que, queremos identificar una serie de patrones concretos.
+
+```{r}
+rulesDtrans <- apriori(dtrans, parameter = list(support = soporte, confidence = 0.7, target="rules",minlen=2))
+summary(rulesDtrans)
+```
+
+Se han identificado 28 reglas diferentes
+
+# Representación de las reglas
+```{r}
+# Añadimos la medida "Fisher exact test", que devuelve el p-value asociado a la probabilidad de observar la regla solo por azar.
+FisherTest <- interestMeasure(rulesDtrans, measure = c("fishersExactTest"),
+                            transactions = dtrans)
+quality(rulesDtrans) <- cbind(quality(rulesDtrans), FisherTest)
+
+#Eliminamos columnas que no nos interesan
+df_reglas <- as(rulesDtrans,Class = "data.frame")
+df_reglas<-df_reglas[,-c(4)]
+
+#Ordenamos por confidence
+df_reglas <- df_reglas[order(df_reglas$confidence,decreasing = T), ]
+df_reglas
+
+#Ordenamos por lift
+df_reglas <- df_reglas[order(df_reglas$lift,decreasing = T), ]
+df_reglas
+
+
+#Las 7 primeras
+df_reglas[c(1:7),]
+```
+
+# Representación gráfica interactiva de las reglas
+```{r}
+plot(rulesDtrans, method="graph")
+plot (rulesDtrans ,method="graph", engine="interactive")
+
+
+library(plotly)
+p<-plot(rulesDtrans, method="graph", engine = "htmlwidget")
+p
+htmlwidgets::saveWidget(as_widget(p), "index.html")
+```
+
+
+# Reglas maximales
+```{r}
+rules_maximales <- rulesDtrans[is.maximal(rulesDtrans)]
+rules_maximales
+#inspect(sort(rules_maximales, decreasing = TRUE, by = "confidence")) #Reglas ordenadas por support
+#inspect(sort(rules_maximales, decreasing = TRUE, by = "lift")) #Reglas ordenadas por support
+```
+Se han identificado 22 reglas maximales. La reglas maximales no son de interés, lo que queremos ver son los patrones con mayor confidence, nos da igual si incluye más items o menos.
+
+
+# Filtrado de reglas
+
+Si queremos verificar un tipo de diagnostico en concreto, podemos hacer un filtro de las reglas como se presenta a continuación.
+```{r}
+reglas_filtradas <- subset(rulesDtrans, subset = lhs %ain% "Diagnosticos=ACL (LIGAMENTO CRUZADO ANTERIOR)")
+inspect(reglas_filtradas)
+```
+
+====================================================================================================================================
+# ANEXO
+
+# Verificación de reglas redundantes
+
+Verificamos las reglas redundantes
+```{r}
+reglas_redundantes <- rulesDtrans[is.redundant(x = rulesDtrans, measure = "confidence")]
+reglas_redundantes
+```
+
+IMPORTANTEEEEEEE
+# https://rpubs.com/Joaquin_AR/397172
+# https://rpubs.com/Cristina_Gil/Reglas_Asociacion
+
+Gráficoss
+# https://rpubs.com/mimd/780760
+#http://apuntes-r.blogspot.com/2015/07/reglas-de-asociacion.html
