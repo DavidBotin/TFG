@@ -1,32 +1,17 @@
 # TFG
-Análisis Lesiones deportes de invierno
+## Análisis Lesiones deportes de invierno estación Baqeuira-Beret
 
-Descripción de los contenidos del repositorio: https://github.com/DavidBotin/TFG
+**Descripción de los contenidos del repositorio**: https://github.com/DavidBotin/TFG
 
-Memoria del trabajo.
+En la carpeta de TFG de github encontramos todos los códigos del análisis realizado junto a los *datasets*. Para ello se ha dividido la carpeta en dos apartados,según el tipo de análisis realizado; Series temporales y Mineria de datos, que a su vez corresponde con los dos tipos de bases de datos. Cada análisis esta vinculado con la parte de los resultados correspondientes.
 
-D3.pdf
-Encontramos los scripts ordenados según a que parte del trabajo corresponden:
+En la carpeta de Series temporales encontramos;
+- Pre-processing  /  *Los archivos proporcionados deben tratarse antes de poder analizarse, en este script se transforma la base de datos proporcionada en una base de datos limpia final que denominamos Data.*
+- Análisis de Series temporales  /  *Se pretende analizar la evolución de las lesiones y obtener un prónostico de esta variable. Corresponde con la parte de resultados 4.1*
+- Análisis de Series temporales Descriptiva multivariante  /  *Análisis complementario en el que se busca de forma gráfica diferencias  entre las curvas de distintas variables. Este apartado se vincula con la parte de resultados 4.2 y 4.3*
 
-01 = Tratados de la base de datos iniciales.
-02 = Preprocessing y análisis previo.
-03 = Métodos no supervisados.
-04 = Métodos supervisados.
-05 = Scripts una vez finalizado el trabajo.
-Scripts de R utilizados.
+En la carpeta de Mineria de datos encontramos;
+- Pre-processing  /  *Mismo concepto que en la parte de series temporales, los datos proporcionados deben ser tratados. Además, una descriptiva univariante y bivariante complementa los análisis que se vana a hacer a continuación*
+- ACM_Final  /  *En busca de relaciones, ejecutamos el algoritmo ACM, del que gráficamente obtendremos las conclusiones y los resultados del apartado 4.5*
+- Reglas de decisión  /  *En este script ejecutamos el algoritmo A priori, del cual obtendrtemos resultados analíticos plasmados en el apartado 4.6*
 
-00_00_Definir_Rutas.R *Contiene las rutas para ejecutar el trabajo
-01_01_Imputacion_de_NA.R *Imputacion de missings en el conjunto de datos
-01_02_Diagrama_Gantt.R *Diagrama de Gantt previsto para el trabajo
-01_03_Descriptiva.R *Descriptiva de la base de datos
-02_01_Preprocessing.R *Preprocesamiento de la base de datos
-02_02_Descriptiva_PostPreprocessing.R *Descriptiva una vez preprocesados los datos
-03_01_PCA.R *ACP para el conjunto de datos
-03_02_MCA.R *ACM para el conjunto de datos
-04_01_Decision_Tree.R *Implementación de Arboles de decision
-04_02_KNN.R *Implementación del K Nearest neighbour
-04_03_Naive_Bayes.R *Implementación del Naive Bayes
-04_04_SVM.R *Implementación del Support Vector Machine
-04_05_Random_Forest.R *Implementación del Random Forest
-04_06_XGBoost.R *Implementación del XGBoost
-05_01_Diagrama_Gantt_Real.R *Diagrama de Gantt real del trabajo
