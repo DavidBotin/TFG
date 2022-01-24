@@ -1,5 +1,5 @@
 # TFG
-## Análisis Lesiones deportes de invierno estación Baqeuira-Beret
+## Análisis de lesiones en deportes de invierno en la estación Baqueira-Beret
 
 **Descripción de los contenidos del repositorio**: https://github.com/DavidBotin/TFG
 
@@ -11,7 +11,7 @@ En la carpeta de Series temporales encontramos;
 - Análisis de Series temporales Descriptiva multivariante  /  *Análisis complementario en el que se busca de forma gráfica diferencias  entre las curvas de distintas variables. Este apartado se vincula con la parte de resultados 4.2 y 4.3*
 
 En la carpeta de Mineria de datos encontramos;
-- Pre-processing  /  *Mismo concepto que en la parte de series temporales, los datos proporcionados deben ser tratados. Además, una descriptiva univariante y bivariante complementa los análisis que se vana a hacer a continuación*
-- ACM_Final  /  *En busca de relaciones, ejecutamos el algoritmo ACM, del que gráficamente obtendremos las conclusiones y los resultados del apartado 4.5*
+- Pre-processing  /  *Mismo concepto que en la parte de series temporales, los datos proporcionados deben ser tratados. Además, una descriptiva univariante y bivariante complementa los análisis que se van a hacer a continuación*
+- ACM_Final  /  *En busca de relaciones ejecutamos el algoritmo ACM, del que gráficamente obtendremos las conclusiones y los resultados del apartado 4.5*
 - Reglas de decisión  /  *En este script ejecutamos el algoritmo A priori, del cual obtendrtemos resultados analíticos plasmados en el apartado 4.6*
 
