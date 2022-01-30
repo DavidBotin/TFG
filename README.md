@@ -1,5 +1,5 @@
 # TFG
-## Análisis de lesiones en deportes de invierno en la estación Baqueira-Beret
+## Análisis Estadístico de las lesiones de deportes de invierno en la estación de Baqueira-Beret
 
 **Descripción de los contenidos del repositorio**: https://github.com/DavidBotin/TFG
 
